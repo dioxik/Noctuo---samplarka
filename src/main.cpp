@@ -205,13 +205,13 @@ void drawScreen() {
 
     switch (currentScreen) {
         case ScreenState::MAIN:
-            display.println("Main Screen");
+            display.println("Sampel 20gm");
             break;
         case ScreenState::LIST:
-            display.println("List Screen");
+            display.println("Sampel 50gm");
             break;
         case ScreenState::EDIT:
-            display.print("Edit: ");
+            display.print("Sampel 100gm: ");
             display.println(editValue);
             break;
     }
