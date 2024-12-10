@@ -1,10 +1,28 @@
-
 /*
 Podlaczenie do ESP32:
-VCC -> 3.3V
-GND -> GND
-SCK -> gpio 22(SCL)
-SDA -> gpio 21(SDA)
+
+**OLED Display (Adafruit_SH1106G):**
+* VCC -> 3.3V 
+* GND -> GND
+* SCK -> GPIO 22 (SCL)
+* SDA -> GPIO 21 (SDA)
+
+
+**Rotary Encoder:**
+* CLK (Encoder A) -> GPIO 32
+* DT (Encoder B) -> GPIO 33
+* SW (Button)     -> GPIO 34
+
+**TMC2209 Stepper Driver:**
+* VMOT -> Motor Power Supply (NOT connected to ESP32)
+* GND -> GND
+* STEP -> GPIO 26
+* DIR -> GPIO 27
+* EN -> GPIO 2  
+* RX -> GPIO 13 (Serial1 RX) *Note: Using SoftwareSerial can sometimes be unreliable. Hardware Serial is preferred.*
+* TX -> GPIO 12 (Serial1 TX) *Note: This pin is only needed if you are using UART communication for configuration or diagnostics and NOT for step/dir control.*
+
+
 */
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -26,7 +44,9 @@ const int8_t DI_ENCODER_SW = 34;
 // TMC2209 Stepper Driver
 #define TMC2209_SERIAL_RX 13
 #define TMC2209_SERIAL_TX 12
-#define TMC2209_EN_PIN 2
+#define TMC2209_STEP_PIN        26 // Define the STEP pin
+#define TMC2209_DIR_PIN         27 // Define the DIR pin
+#define TMC2209_EN_PIN          2  // Define the ENABLE pin
 #define R_SENSE 0.11f
 #define TMC2209_SLAVE_ADDR 0b00
 
@@ -50,12 +70,12 @@ void knobCallback(long value);
 void buttonCallback(unsigned long duration);
 void changeScreen(int direction);
 void drawScreen();
-
+void moveStepper(int steps, bool direction);
 
 
 
 RotaryEncoder rotaryEncoder(DI_ENCODER_A, DI_ENCODER_B, DI_ENCODER_SW);
-TMC2209Stepper driver(&Serial1, R_SENSE, 0b00); // Address 0 (default for TMC2209)
+TMC2209Stepper driver(&Serial1, R_SENSE, TMC2209_SLAVE_ADDR); // Address 0 (default for TMC2209)
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 void setup()
@@ -69,6 +89,20 @@ void setup()
 	rotaryEncoder.onTurned(&knobCallback);
 	rotaryEncoder.onPressed(&buttonCallback);
 	rotaryEncoder.begin();
+
+    // TMC2209 Stepper Driver Setup
+    pinMode(TMC2209_STEP_PIN, OUTPUT);
+    pinMode(TMC2209_DIR_PIN, OUTPUT);
+    pinMode(TMC2209_EN_PIN, OUTPUT);
+    digitalWrite(TMC2209_EN_PIN, LOW); // Enable the driver (LOW is typically active)
+    // Initialize TMC2209 settings (e.g., current, microsteps)
+    driver.begin();  // Initiate the driver
+    driver.rms_current(500); // Set RMS current (adjust as needed)
+    driver.microsteps(8);   // Set microstepping (adjust as needed)
+
+    Serial.println("TMC2209 initialized");
+
+
 
 	display.begin(i2c_Address, true); // Address 0x3C default
 									  // display.setContrast (0); // dim display
@@ -87,6 +121,17 @@ void setup()
 void loop()
 {
 	handleEncoder();
+}
+
+void moveStepper(int steps, bool direction) {
+  digitalWrite(TMC2209_DIR_PIN, direction ? HIGH : LOW); // Set direction
+
+  for (int i = 0; i < abs(steps); i++) {
+    digitalWrite(TMC2209_STEP_PIN, HIGH);
+    delayMicroseconds(5); // Adjust step pulse duration as needed
+    digitalWrite(TMC2209_STEP_PIN, LOW);
+    delayMicroseconds(5); // Adjust step pulse duration as needed
+  }
 }
 
 void knobCallback(long value)
@@ -127,6 +172,8 @@ void OnLeft()
 {
 	turnedLeftFlag = false;
 changeScreen(-1);
+moveStepper(200, false); // Move 200 steps counter-clockwise
+
 	// display.clearDisplay();
 	// display.setCursor(2, 0);
 	// display.println("left");
@@ -137,6 +184,8 @@ void OnRight()
 {
 	turnedRightFlag = false;
 changeScreen(1);
+moveStepper(200, true); // Move 200 steps counter-clockwise
+
 	// display.clearDisplay();
 	// display.setCursor(2, 0);
 	// display.println("right");
